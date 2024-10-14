@@ -3,10 +3,11 @@ import cv2
 import mediapipe as mp
 import random
 
+
 # Variables
-w = 1920
-h = 1080
-target_pos = (random.randint(w/20, 19*w/20),random.randint(w/20, h - w/20))
+w = 2000
+h = 1200
+target_pos = (random.randint(int(w/20), int(19*w/20)),random.randint(int(w/20), int(h - w/20)))
 #target_pos = (int(w/2) ,int(h/2))
 is_target_hit = False
 point = 0
@@ -38,7 +39,7 @@ ball = ball.ball((90,90,90), int(w/40), (int(w/2), int(h/2)), (50, 50))
 with mp_hands.Hands(min_detection_confidence = 0.2, min_tracking_confidence = 0.2) as hands:
     while capture.isOpened():
         ret, frame = capture.read()
-        frame = cv2.resize(frame, (1920, 1080))
+        frame = cv2.resize(frame, (w, h))
         if not ret:
             print("Check your Webcam")
             break
