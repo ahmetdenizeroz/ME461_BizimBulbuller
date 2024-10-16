@@ -33,7 +33,7 @@ capture = cv2.VideoCapture(0)
 capture.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
 capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
-ball = ball.ball((90,90,90), int(w/40), (int(w/2), int(h/2)), (50, 50))
+ball = ball.ball((90,90,90), int(w/40), (int(w/2), int(h/2)), (40, 40))
 
 
 with mp_hands.Hands(min_detection_confidence = 0.2, min_tracking_confidence = 0.2) as hands:
@@ -50,7 +50,8 @@ with mp_hands.Hands(min_detection_confidence = 0.2, min_tracking_confidence = 0.
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
         results = hands.process(rgb_frame)
-	#Ball Drawing
+
+	    #Ball Drawing
         ball.move()
         cv2.circle(frame, ball.position, ball.size, ball.color, -1)
 
@@ -60,7 +61,7 @@ with mp_hands.Hands(min_detection_confidence = 0.2, min_tracking_confidence = 0.
 
 
         if results.multi_hand_landmarks:
-            #print(type(results.multi_hand_landmarks))
+            print(type(results.multi_hand_landmarks))
             for hand_landmarks in results.multi_hand_landmarks:
                 mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS, mp_drawing.DrawingSpec(color = (111, 111, 111), thickness = 2), mp_drawing.DrawingSpec(color = (5, 5, 5), thickness = 2))
                 
@@ -90,7 +91,9 @@ with mp_hands.Hands(min_detection_confidence = 0.2, min_tracking_confidence = 0.
                             is_hit = True
                         if abs(normal_dist) -ball.size > 1:
                             is_hit = False
-
+        
+        
+        
         if ball.position[0] - ball.size < 1 and not is_hit_left: 
             ball.Change_Dir((0, 1))
             is_hit_left = True
