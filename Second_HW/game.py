@@ -61,7 +61,7 @@ with mp_hands.Hands(min_detection_confidence = 0.2, min_tracking_confidence = 0.
 
 
         if results.multi_hand_landmarks:
-            print(type(results.multi_hand_landmarks))
+           #print(type(results.multi_hand_landmarks))
             for hand_landmarks in results.multi_hand_landmarks:
                 mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS, mp_drawing.DrawingSpec(color = (111, 111, 111), thickness = 2), mp_drawing.DrawingSpec(color = (5, 5, 5), thickness = 2))
                 
