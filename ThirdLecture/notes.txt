@@ -1,0 +1,15 @@
+Try make turtle draw hearth or infinite 
+you canlist topics, you can even publish a message to a topic from even command line
+How to list currently active topics?
+how do i dirrectly froma command line a message to topic i want?
+Scotish elevator eleven ?
+How to set, see ros domain id ?
+What to sen ?
+
+Game:
+Score must be kept
+Line can be arranged 
+
+Discussion with next group:
+Will be discussed
+
