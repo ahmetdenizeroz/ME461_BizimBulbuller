@@ -5,8 +5,8 @@ import random
 
 
 # Variables
-w = 2000
-h = 1200
+w = 2100
+h = 1350
 target_pos = (random.randint(int(w/20), int(19*w/20)),random.randint(int(w/20), int(h - w/20)))
 #target_pos = (int(w/2) ,int(h/2))
 is_target_hit = False
