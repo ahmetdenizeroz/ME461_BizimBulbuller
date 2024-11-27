@@ -1,0 +1,6 @@
+Sevices 
+Actions
+mage reconition
+recognizing different shapes and colors.
+how to identift different objects
+next: managing noise 

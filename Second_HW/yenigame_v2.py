@@ -91,6 +91,8 @@ while running:
             running = False
         elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             running = False
+    
+    screen.fill((0,0,0))
 
     # Capture frame from webcam and process it
     ret, frame = cap.read()
