@@ -22,7 +22,7 @@ pygame.init()
 info = pygame.display.Info()
 print(f"Your screen width is: {info.current_w} and screen height is: {info.current_h}")
 SCREEN_WIDTH = int(input("Please enter the required width: "))
-SCREEN_HEIGHT = int(input("Please enter the required height "))
+SCREEN_HEIGHT = int(input("Please enter the required height: "))
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("Pathfinding Algorithms Visualization")
 font = pygame.font.SysFont("Arial", 20)
@@ -36,11 +36,10 @@ CELL_SIZE = min(CELL_WIDTH, CELL_HEIGHT)
 GRID_COLS = (SCREEN_WIDTH - MARGIN) // (CELL_SIZE + MARGIN)
 GRID_ROWS = (SCREEN_HEIGHT - 100 - MARGIN) // (CELL_SIZE + MARGIN)
 
+
 # Helper Functions
 def draw_ui(selected_algorithm):
-
     """Draws the algorithm selection UI."""
-
     ui_start_y = SCREEN_HEIGHT - 90
     screen.fill(WHITE, (0, SCREEN_HEIGHT - 100, SCREEN_WIDTH, 100))
     text = font.render("Select Algorithm:", True, TEXT_COLOR)
@@ -52,10 +51,9 @@ def draw_ui(selected_algorithm):
         screen.blit(label, (165 + i * 150, ui_start_y + 10))
     pygame.display.flip()
 
+
 def generate_grid():
-
     """Generates a random grid with obstacles."""
-
     grid = [[0 for _ in range(GRID_COLS)] for _ in range(GRID_ROWS)]
     obstacle_count = (GRID_ROWS * GRID_COLS) // 4
     for obstacle in range(obstacle_count):
@@ -63,10 +61,9 @@ def generate_grid():
         grid[x][y] = 1
     return grid
 
+
 def neighbors(node):
-
     """Returns valid neighbors of a node in the grid."""
-
     row, col = node
     directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]  # Right, Down, Left, Up
     result = []
@@ -76,10 +73,9 @@ def neighbors(node):
             result.append((r, c))
     return result
 
+
 def update_frame(grid, start, target, visited=None, path=None):
-
     """Updates only the changed portions of the grid."""
-
     updated_rects = []
     for row in range(GRID_ROWS):
         for col in range(GRID_COLS):
@@ -102,10 +98,9 @@ def update_frame(grid, start, target, visited=None, path=None):
             updated_rects.append(rect)
     pygame.display.update(updated_rects)
 
+
 def get_selected_algorithm(pos):
-
     """Determines which algorithm was selected based on the click position."""
-
     ui_start_y = SCREEN_HEIGHT - 90
     for i, algorithm in enumerate(ALGORITHMS):
         center_x, center_y = 150 + i * 150, ui_start_y + 20
@@ -113,13 +108,45 @@ def get_selected_algorithm(pos):
             return algorithm
     return None
 
+
+def show_no_solution_message():
+    """Displays a 'No Solution' message and plays an alarm sound."""
+    # Display the message
+    screen.fill(WHITE)
+    message = font.render("NO SOLUTION FOUND!", True, (255, 0, 0))  # Red text
+    sub_message = font.render("Press ESC to restart the game.", True, TEXT_COLOR)
+    screen.blit(message, (SCREEN_WIDTH // 2 - message.get_width() // 2, SCREEN_HEIGHT // 2 - 50))
+    screen.blit(sub_message, (SCREEN_WIDTH // 2 - sub_message.get_width() // 2, SCREEN_HEIGHT // 2 + 10))
+    pygame.display.flip()
+
+    # Play alarm sound
+    try:
+        pygame.mixer.init()
+        pygame.mixer.music.load("alarm.wav")  # Load an alarm sound file
+        pygame.mixer.music.play()
+    except pygame.error as e:
+        print(f"Error playing sound: {e}")
+
+    # Wait for ESC key to restart
+    waiting = True
+    while waiting:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    waiting = False
+                    pygame.mixer.music.stop()  # Stop the alarm sound
+
+
 # Pathfinding Algorithms
 def bfs(grid, start, target):
     queue = deque([start])
     visited = set()
     parent = {}
     visited.add(start)
-    dosuccess = False   
+    dosuccess = False
     while queue:
         current = queue.popleft()
         if current == target:
@@ -132,6 +159,7 @@ def bfs(grid, start, target):
                 queue.append(neighbor)
     path = reconstruct_path(parent, start, target)
     return visited, path, dosuccess
+
 
 def dfs(grid, start, target):
     stack = [start]
@@ -151,6 +179,7 @@ def dfs(grid, start, target):
                 stack.append(neighbor)
     path = reconstruct_path(parent, start, target)
     return visited, path, dosuccess
+
 
 def ucs(grid, start, target):
     pq = [(0, start)]
@@ -175,6 +204,7 @@ def ucs(grid, start, target):
     path = reconstruct_path(parent, start, target)
     return visited, path, dosuccess
 
+
 def greedy(grid, start, target):
     pq = [(heuristic(start, target), start)]
     visited = set()
@@ -195,6 +225,7 @@ def greedy(grid, start, target):
     path = reconstruct_path(parent, start, target)
     return visited, path, dosuccess
 
+
 def a_star(grid, start, target):
     pq = [(heuristic(start, target), 0, start)]
     visited = set()
@@ -214,13 +245,14 @@ def a_star(grid, start, target):
             if neighbor not in cost or new_cost < cost[neighbor]:
                 cost[neighbor] = new_cost
                 parent[neighbor] = current
-                priority = new_cost + heuristic(neighbor, target)
-                heapq.heappush(pq, (priority, new_cost, neighbor))
+                heapq.heappush(pq, (new_cost + heuristic(neighbor, target), new_cost, neighbor))
     path = reconstruct_path(parent, start, target)
     return visited, path, dosuccess
 
+
 def heuristic(node, target):
     return abs(node[0] - target[0]) + abs(node[1] - target[1])
+
 
 def reconstruct_path(parent, start, target):
     path = []
@@ -233,6 +265,7 @@ def reconstruct_path(parent, start, target):
     path.append(start)
     return path[::-1]
 
+
 # Main Function
 def main():
     global grid
@@ -241,6 +274,7 @@ def main():
     selected_algorithm = None
     visited, path = None, None
     running = True
+
     while running:
         update_frame(grid, start, target, visited, path)
         draw_ui(selected_algorithm)
@@ -272,26 +306,22 @@ def main():
                 if selected_algorithm and start and target:
                     if selected_algorithm == "BFS":
                         visited, path, dosuccess = bfs(grid, start, target)
-                        if not dosuccess:
-                            print("No solution found")
                     elif selected_algorithm == "DFS":
                         visited, path, dosuccess = dfs(grid, start, target)
-                        if not dosuccess:
-                            print("No solution found")
                     elif selected_algorithm == "UCS":
                         visited, path, dosuccess = ucs(grid, start, target)
-                        if not dosuccess:
-                            print("No solution found")
                     elif selected_algorithm == "Greedy":
                         visited, path, dosuccess = greedy(grid, start, target)
-                        if not dosuccess:
-                            print("No solution found")
                     elif selected_algorithm == "A*":
                         visited, path, dosuccess = a_star(grid, start, target)
-                        if not dosuccess:
-                            print("No solution found")
+
+                    if not dosuccess:
+                        show_no_solution_message()
+                        grid = generate_grid()
+                        start, target, visited, path = None, None, None, None
 
     pygame.quit()
+
 
 if __name__ == "__main__":
     main()
