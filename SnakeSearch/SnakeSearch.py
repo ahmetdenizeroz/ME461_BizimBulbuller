@@ -309,6 +309,7 @@ def main():
                     needs_update = True  # Trigger UI update
                 elif event.key == pygame.K_ESCAPE:  # Exit the program
                     running = False
+
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 x, y = pygame.mouse.get_pos()
                 if y < SCREEN_HEIGHT - 100:  # Grid area
