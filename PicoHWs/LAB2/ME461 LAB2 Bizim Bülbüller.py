@@ -22,9 +22,16 @@ start_time = 0
 game_running = False
 button = machine.Pin(22, machine.Pin.IN, machine.Pin.PULL_DOWN)
 
-#UART setup
+# Variables for double click check
+last_press_time = 0
+click_count = 0
+DOUBLE_CLICK_TIME = 300  # Time in milliseconds for a double click
+stopper = 0
+stop = False
 
+#UART setup
 uart = machine.UART(0, baudrate=9600, tx=machine.Pin(0), rx=machine.Pin(1))
+
 
 class Button():
     def __init__(button, name, pin, state):
@@ -73,6 +80,9 @@ def ByteDisplay(val):
     utime.sleep(delay)
     strip.fill((0,0,0))
     
+    Stopper()
+    check_double_click()
+    
     LeftButton.eliminate_debounce(debounce_time)  # Handle left button debounce
     RightButton.eliminate_debounce(debounce_time)  # Handle right button debounce
     if LeftButton.isdown:  # Increment the counter if the left button is pressed
@@ -81,6 +91,11 @@ def ByteDisplay(val):
     if RightButton.isdown:  # Decrement the counter if the right button is pressed
         delay -= 0.1
         RightButton.isdown = False  # Reset button state
+    while stop:
+        print('stopped')
+             
+        
+    
    
     print('Delay between numbers is:', delay)    
 
@@ -104,11 +119,37 @@ def game_summary():
     clear_leds()
     for i in range(numpix):
         strip.set_pixel(i , (255,0,0))  # Red flash for game over
-        led_strip.write()
-        time.sleep(0.1)
+        strip.show()
+        utime.sleep(0.1)
     clear_leds()
-    
 
+def check_double_click():
+    global last_press_time, click_count, stopper
+
+    if button.value() == 0:  # Button pressed
+        current_time = time.ticks_ms()
+        if last_press_time == 0:  # First press
+            last_press_time = current_time
+            click_count = 1
+        else:
+            # Check time difference
+            time_diff = time.ticks_diff(current_time, last_press_time)
+            if time_diff <= DOUBLE_CLICK_TIME:
+                click_count += 1
+                if click_count == 2:  # Double click detected
+                    print("Double click detected!")
+                    click_count = 0
+                    last_press_time = 0
+                    stopper += 1
+                
+            else:  # Too slow for double click, reset
+                click_count = 1
+                last_press_time = current_time
+            
+def Stopper():
+    #Sets the stop state depending on the stopper value
+    global stop
+    stop = stopper % 2 == 1
 
 def orchestrate():
     '''
@@ -121,7 +162,8 @@ def orchestrate():
     STEP 2: LedPong Single Player
     STEP 3: PotRead data
     STEP 4: LedPong Two Player
-    STEP 5: 
+    STEP 5: Double Click Test
+    STEP 6: UART Data Test
     Selection: """)
 
             
@@ -132,7 +174,8 @@ while True:
     if selection == '1':
     
         for i in range(0, 255):
-            ByteDisplay(i)
+            k = i % 256 
+            ByteDisplay(k)
     if selection == '2':
         while True:
             if not game_running and button.value():
@@ -224,8 +267,72 @@ while True:
             if ball_position == numpix -1:
                 uart.write(f"{position}\n")
                 time.sleep(0.1)
+    
+    if selection == '5':
+        while True:
+            check_double_click()
+            time.sleep(0.1)
             
+    if selection == '6':
+        while True:
+            if not game_running and button.value():
+                print("Game starting! Get ready!")
+                game_running = True
+                start_time = time.time()
+                ball_position = numpix - 1
+                ball_direction = -1
+                ball_speed = 0.2
+                points = 0
+    
+            if game_running:
+                elapsed = time.time() - start_time
+        
+        
+        # Ball movement
+            if ball_position < numpix + 1: 
+                ball_position += ball_direction
+                if ball_position == 0:
+                    ball_direction *= -1  # Bounce
+                    if ball_position == 0:
+                        print("Ball missed! -10 points.")
+                        points -= 10
+                        ball_speed = 0.2  # Reset speed
+                update_leds(ball_position)
+                time.sleep(ball_speed)
+                
+                # POT interaction during last LEDs
+                if ball_position < 2 and ball_direction == -1:
+                    twist = PotRead()
+                    if twist > 500 or twist < -500:
+                        print(f"Ball hit! +{twist // 100} points.")
+                        points += twist // 100
+                        ball_direction *= -1
+                        ball_speed = max(0.05, 0.2 - abs(twist) / 10000)
+                    else:
+                        print("Missed opportunity to hit!")
+            
+            #Here it will send the position information to the other pico and recieve.
+            #'Test message' will be changed to the position info.
+            '''
+            if ball_position == numpix - 1:
+                uart.write(ball_position+2)
+                time.sleep(0.1)
+            if uart.any():
+                ball_pos_coming = uart.readline().strip()
+                ball_position = ball_pos_coming
+            
+            '''
+            
+            
+            uart.write('Test Message')
+            time.sleep(0.1)
+            
+            
+            if uart.any():
+                data = uart.readline().strip()  # Read data from the master
+                print(data)
+                
+        
              
             
             
-
