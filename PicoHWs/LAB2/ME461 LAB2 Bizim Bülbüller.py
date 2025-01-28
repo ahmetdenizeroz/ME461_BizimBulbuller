@@ -8,7 +8,7 @@ import utime
 red = (255,0,0)
 debounce_time = 10
 
-pot = machine.ADC(26)
+pot = ADC(26)
 
 delay = 0.5
 numpix = 10
@@ -103,6 +103,7 @@ def PotRead():
     current_value = pot.read_u16()
     time.sleep(0.05)
     next_value = pot.read_u16()
+    #return current_value
     return next_value - current_value
 
 def clear_leds():
@@ -176,6 +177,7 @@ while True:
         for i in range(0, 255):
             k = i % 256 
             ByteDisplay(k)
+            
     if selection == '2':
         while True:
             if not game_running and button.value():
