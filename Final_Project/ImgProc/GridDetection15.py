@@ -3,7 +3,7 @@ import numpy as np
 from collections import deque
 
 # Open the webcam feed from camera index 3
-cap = cv2.VideoCapture(3)
+cap = cv2.VideoCapture(2)
 
 # Create a window for trackbars and buttons
 cv2.namedWindow("Settings")

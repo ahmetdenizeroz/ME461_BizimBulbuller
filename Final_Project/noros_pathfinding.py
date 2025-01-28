@@ -4,7 +4,7 @@ import socket
 import time
 
 # Pico's IP Address (Replace with actual IP)
-PICO_IP = "192.168.106.16"
+PICO_IP = "192.168.66.106"
 PORT = 8080
 
 class PathfindingApp:

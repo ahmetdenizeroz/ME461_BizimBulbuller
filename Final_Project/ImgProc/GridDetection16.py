@@ -7,7 +7,7 @@ n = int(input("Enter number of rows (n): "))
 m = int(input("Enter number of columns (m): "))
 
 # Open the webcam feed from camera index 3
-cap = cv2.VideoCapture(3)
+cap = cv2.VideoCapture(2)
 
 # Create a window for trackbars and buttons
 cv2.namedWindow("Settings")
