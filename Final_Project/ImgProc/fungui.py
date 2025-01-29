@@ -190,7 +190,7 @@ def main():
     cols = 4
     cell_size = 100  # e.g., in millimeters
 
-    detector = ArucoGridDetector(robot_id=robot_id, rows=rows, cols=cols, cell_size=cell_size, camera_index=2)
+    detector = ArucoGridDetector(robot_id=robot_id, rows=rows, cols=cols, cell_size=cell_size, camera_index=0)
 
     # Initialize the GUI
     root = tk.Tk()
