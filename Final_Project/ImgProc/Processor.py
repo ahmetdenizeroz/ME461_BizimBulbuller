@@ -2,7 +2,7 @@ from GridDetectionFinal import ArucoGridDetector
 import cv2
 import time
 
-detector = ArucoGridDetector(robot_id=28, rows=3, cols=4, cell_size=150.0)
+detector = ArucoGridDetector(robot_id=28, rows=3, cols=4, cell_size=150.0, camera_index=0)
 
 start = time.time()
 while True:

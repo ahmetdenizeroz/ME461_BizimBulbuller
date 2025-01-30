@@ -293,6 +293,7 @@ class ArucoGridDetector:
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 2)
                 cv2.putText(display_frame, f"{angle_deg:.1f} deg", (x1, y1 - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 2)
+
                 # We no longer draw the old front line here. That will be replaced
                 # by drawing from center to the front corner of the triangle later.
 

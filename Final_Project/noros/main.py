@@ -2,8 +2,8 @@ import network
 import socket
 import time
 
-SSID = "Seççavv"
-PASSWORD = "yirh3223"
+SSID = "Redmi"
+PASSWORD = "ade654321ade"
 
 ROWS, COLS = 3, 4
 current_position = [0, 0]
