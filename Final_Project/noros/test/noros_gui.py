@@ -27,7 +27,7 @@ class NorosGUI:
 
         # 1) Initialize ArUco-based detection class
         self.detector = ArucoGridDetector(
-            robot_id=42, rows=6, cols=8, cell_size=150, camera_index=2
+            robot_id=42, rows=6, cols=8, cell_size=150, camera_index=3
         )
 
         # 2) Initialize search and movement classes

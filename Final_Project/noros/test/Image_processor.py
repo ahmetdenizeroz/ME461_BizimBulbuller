@@ -156,6 +156,7 @@ class ArucoGridDetector:
         self.show_lines = 0
         self.use_wrap = 0
         self.triangle_side = 100  # side of the equilateral triangle
+        self.cell_centers = []
 
         # Internal state
         self.cap = cv2.VideoCapture(camera_index)
@@ -170,6 +171,9 @@ class ArucoGridDetector:
         self.other_markers = []     # list of (marker_id, (x,y), angle_deg)
         self.robot_cell_label = None
         self.other_markers_cell_labels = []
+
+        # Expected angle initialization
+        self.expected_angle = 0.0  # Initialize to 0 degrees (facing East)
 
     # ======= Setters =======
     def set_detect_grid_state(self, val):
@@ -192,6 +196,15 @@ class ArucoGridDetector:
 
     def set_triangle_side(self, val):
         self.triangle_side = val
+
+    def set_expected_angle(self, angle_deg):
+        """
+        Set the expected angle of the robot.
+        Args:
+            angle_deg (float): Desired orientation in degrees.
+        """
+        self.expected_angle = angle_deg % 360  # Normalize to [0, 360)
+        print(f"[ArucoGridDetector] Expected angle set to {self.expected_angle} degrees.")
 
     # ======= Main Processing =======
     def update_frame(self):
@@ -392,6 +405,7 @@ class ArucoGridDetector:
     # ======= Draw Grid Overlays =======
     def draw_grid(self, display_frame, used_homography):
         cell_centers, labels = find_cell_centers(self.last_valid_grid)
+        self.cell_centers = find_cell_centers(self.last_valid_grid)
         for (cx, cy), lbl in zip(cell_centers, labels):
             if used_homography and self.last_valid_homography is not None:
                 cx, cy = warp_point((cx, cy), self.last_valid_homography)
@@ -449,6 +463,7 @@ class ArucoGridDetector:
 
     def get_robot_position(self):
         """(x, y, angle_deg) in final coords if wrap=1 or original if wrap=0."""
+        #xd = (self.robot_position[0], self.robot_position[1], self.robot_position[2] - 90)
         return self.robot_position
 
     def get_robot_cell_label(self):
@@ -462,6 +477,14 @@ class ArucoGridDetector:
     def get_other_markers_cells(self):
         """List of (marker_id, cell_label, angle_deg). cell_label=None if no cell encloses it."""
         return self.other_markers_cell_labels
+
+    def get_expected_angle(self):
+        """
+        Get the expected angle of the robot.
+        Returns:
+            float: Expected orientation in degrees.
+        """
+        return self.expected_angle
 
     def release(self):
         if self.cap:
