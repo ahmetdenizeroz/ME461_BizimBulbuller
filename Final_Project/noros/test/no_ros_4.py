@@ -34,7 +34,7 @@ class NorosGUI:
 
         # 2) Initialize search and movement classes
         self.searcher = SearchClass()
-        self.mover = MovementClass(pico_ip="192.168.187.16", pico_port=12346, detector=self.detector)
+        self.mover = MovementClass(pico_ip="192.168.232.16", pico_port=12346, detector=self.detector)
         self.mover.connect()  # Connect manually if needed
 
         # We set default grid dimensions in the search:

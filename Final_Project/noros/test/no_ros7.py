@@ -1,19 +1,35 @@
-cmport tkinter as tk
+import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
 import cv2
 import math
+import threading
+import queue
+import sys
 
 # Import your library classes (modular design)
 from Image_processor import ArucoGridDetector  # Robot Position Tracking
 from search_class import SearchClass          # Pathfinding (A* Search)
-from movement_class3 import MovementClass      # Movement Control
+from movement_class5 import MovementClass      # Movement Control
+
+class TextRedirector:
+    """Redirects print output to the Text widget."""
+    def __init__(self, text_widget):
+        self.text_widget = text_widget
+
+    def write(self, message):
+        """Insert the message into the Text widget and auto-scroll."""
+        self.text_widget.insert(tk.END, message)
+        self.text_widget.see(tk.END)  # Auto-scroll to the latest message
+
+    def flush(self):
+        pass
 
 class NorosGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("NOROS - Main GUI")
-        self.root.geometry("1400x700")
+        self.root.geometry("1920x1080") #1400x700
         self.root.resizable(False, False)  # Prevent resizing for cleaner UI
 
         # Apply TTK styling for aesthetics
@@ -32,7 +48,7 @@ class NorosGUI:
 
         # 2) Initialize search and movement classes
         self.searcher = SearchClass()
-        self.mover = MovementClass(pico_ip="192.168.187.16", pico_port=12346,detector = self.detector)
+        self.mover = MovementClass(pico_ip="192.168.232.16", pico_port=12346, detector=self.detector)
         self.mover.connect()  # Connect manually if needed
 
         # We set default grid dimensions in the search:
@@ -41,7 +57,7 @@ class NorosGUI:
         self.searcher.set_grid_dimensions(self.rows, self.cols)
 
         # ------------------------ Main Layout Frames ------------------------
-        self.left_frame = ttk.Frame(self.root, width=500, height=400)
+        self.left_frame = ttk.Frame(self.root, width=500, height=700)
         self.left_frame.pack_propagate(False)
         self.left_frame.pack(side=tk.LEFT, padx=10, pady=10)
 
@@ -51,9 +67,25 @@ class NorosGUI:
         self.control_frame = ttk.Frame(self.root)
         self.control_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=10, pady=10)
 
-        # ------------------------ Camera Feed ------------------------
+        # ------------------------ Left Frame Layout (Camera + Log) ------------------------
+
+        # Frame to contain camera feed
         self.feed_label = ttk.Label(self.left_frame, text="Camera Feed Loading...")
-        self.feed_label.pack(expand=True, fill=tk.BOTH)
+        self.feed_label.pack(expand=False, fill=tk.BOTH, padx=5, pady=(5, 2))  # Margin on top
+
+        # Frame for the log text box (fills remaining space under the camera)
+        log_frame = ttk.Frame(self.left_frame)
+        log_frame.pack(expand=True, fill=tk.BOTH, padx=5, pady=(2, 5))  # Margin at the bottom
+
+        self.log_text = tk.Text(log_frame, wrap="word", font=("Arial", 12, "bold"))
+        self.log_text.pack(expand=True, fill=tk.BOTH, side=tk.LEFT)
+
+        log_scrollbar = ttk.Scrollbar(log_frame, command=self.log_text.yview)
+        log_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.log_text.config(yscrollcommand=log_scrollbar.set)
+
+        # Redirect print to the GUI (using the one log_text widget)
+        sys.stdout = TextRedirector(self.log_text)
 
         # ------------------------ Grid Canvas ------------------------
         self.canvas_width = 500
@@ -70,7 +102,11 @@ class NorosGUI:
         self.is_path_found = False
         self.start_cell = None
         self.goal_cell = None
+        self.next_cell = None
         self.path = []
+        self.old_robot_detection_stat = None
+        self.is_path_executing = False   # True when path execution starts, False when it stops
+        self.is_in_destination_cell = False  # True when robot is in the goal cell
 
         # Draw the initial grid
         self.draw_grid()
@@ -81,9 +117,18 @@ class NorosGUI:
         # Create the control panel
         self.create_control_panel()
 
+        # Status Label
+        self.status_label = ttk.Label(self.control_frame, text="Status: Idle", font=("Arial", 12, "bold"))
+        self.status_label.pack(pady=10, fill=tk.X)
+
+        # Movement Thread Control
+        self.movement_thread = None
+        self.movement_queue = queue.Queue()
+
         # Periodic camera and grid updates
         self.update_camera_feed()
         self.update_grid()
+        self.update_led_status()
 
     # ----------------------------------------------------------------
     #                           GRID LOGIC
@@ -133,10 +178,9 @@ class NorosGUI:
                     color = "red"
                 elif (row, col) in self.obstacles:
                     color = "grey"
-                elif (row, col, 0) in self.path or \
-                     (row, col, 90) in self.path or \
-                     (row, col, 180) in self.path or \
-                     (row, col, 270) in self.path:
+                elif (row, col) == self.next_cell:
+                    color = "orange"
+                elif any((row, col) == (step[0], step[1]) for step in self.path):
                     color = "#ADD8E6"  # light blue
                 else:
                     color = "white"
@@ -147,8 +191,8 @@ class NorosGUI:
                 if self.detector.get_robot_cell_label() is not None:
                     # Convert label -> (r, c)
                     label = self.detector.get_robot_cell_label()
-                    robot_r, robot_c = self.converter(label)
-                    if (row, col) == (robot_r, robot_c):
+                    robot_coords = self.converter(label)
+                    if robot_coords and (row, col) == robot_coords:
                         # Draw the orientation triangle
                         # center of cell
                         cx = (x1 + x2) / 2
@@ -157,7 +201,13 @@ class NorosGUI:
                         robot_pos = self.detector.get_robot_position()
                         if robot_pos is not None:
                             angle_deg = robot_pos[2]
-                        self.draw_equilateral_triangle(self.grid_canvas, cx, cy, self.detector.triangle_side/5, angle_deg)
+                        self.draw_equilateral_triangle(
+                            self.grid_canvas,
+                            cx,
+                            cy,
+                            self.detector.triangle_side / 5,
+                            angle_deg
+                        )
 
                 # Number the cell in the center
                 cx = x1 + self.cell_size // 2
@@ -169,8 +219,6 @@ class NorosGUI:
         """Convert cell label to (row, col).  E.g. label=1 => (0,0), etc."""
         if cell_number is None:
             return None
-        # Because we have self.cols columns, label i => row=(i-1)//cols, col=(i-1) % cols
-        # but user’s code had a slightly different pattern. Let’s keep it:
         if cell_number % self.cols == 0:
             return ((cell_number // self.cols) - 1, self.cols - 1)
         else:
@@ -188,7 +236,6 @@ class NorosGUI:
 
         self.goal_cell = (row, col)
         print(f"User selected goal cell = {self.goal_cell}")
-
         self.draw_grid()
 
     def compute_path(self):
@@ -207,12 +254,10 @@ class NorosGUI:
         for (r, c) in self.obstacles:
             self.searcher.add_obstacle(r, c)
 
-        # Suppose the robot orientation is from the detector (mod 360)
         robot_angle = 0
         if self.detector.get_robot_position() is not None:
             robot_angle = self.detector.get_robot_position()[2]
 
-        # Find path
         result_path = self.searcher.find_path(
             self.start_cell, self.goal_cell,
             initial_direction=robot_angle
@@ -232,7 +277,6 @@ class NorosGUI:
         header = ttk.Label(self.control_frame, text="ArUco Detection Settings", font=("Arial", 14, "bold"))
         header.pack(pady=10)
 
-        # 1) Cluster Size
         self.cluster_size_var = tk.IntVar(value=self.detector.cluster_dist)
         lbl_cluster = ttk.Label(self.control_frame, text="Cluster Size")
         lbl_cluster.pack()
@@ -242,7 +286,6 @@ class NorosGUI:
         )
         self.cluster_size_slider.pack(pady=5)
 
-        # 2) Threshold Distance
         self.threshold_var = tk.IntVar(value=self.detector.update_thresh)
         lbl_threshold = ttk.Label(self.control_frame, text="Threshold Distance")
         lbl_threshold.pack()
@@ -252,7 +295,6 @@ class NorosGUI:
         )
         self.threshold_slider.pack(pady=5)
 
-        # 3) Triangle Side
         self.triangle_size_var = tk.IntVar(value=self.detector.triangle_side)
         lbl_triangle = ttk.Label(self.control_frame, text="Triangle Side")
         lbl_triangle.pack()
@@ -262,7 +304,6 @@ class NorosGUI:
         )
         self.triangle_slider.pack(pady=5)
 
-        # 4) Toggles
         self.detect_var = tk.IntVar(value=self.detector.detect_grid)
         self.detect_button = ttk.Checkbutton(
             self.control_frame, text="Grid Detection", variable=self.detect_var, command=self.toggle_detection
@@ -287,18 +328,14 @@ class NorosGUI:
         )
         self.gridlines_button.pack(pady=2)
 
-        # Movement / Path Buttons
         ttk.Separator(self.control_frame, orient='horizontal').pack(fill='x', pady=10)
 
-        # Start Button
         self.btn_start = ttk.Button(self.control_frame, text="Start", command=self.on_start)
         self.btn_start.pack(pady=5, fill=tk.X)
 
-        # Reset Button
         self.btn_reset = ttk.Button(self.control_frame, text="Reset", command=self.on_reset)
         self.btn_reset.pack(pady=5, fill=tk.X)
 
-        # Exit Button
         self.btn_exit = ttk.Button(self.control_frame, text="Exit", command=self.on_exit)
         self.btn_exit.pack(pady=5, fill=tk.X)
 
@@ -306,16 +343,12 @@ class NorosGUI:
     #                 CAMERA FEED & DETECTION UPDATES
     # ----------------------------------------------------------------
     def update_camera_feed(self):
-        """
-        Continuously fetch frames from ArucoGridDetector and updates the feed_label.
-        """
         success = self.detector.update_frame()
         if success:
             frame = self.detector.get_frame()
             if frame is not None:
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 img_pil = Image.fromarray(frame_rgb)
-                # Resize to fit the label
                 img_pil = img_pil.resize((450, 350), Image.Resampling.LANCZOS)
                 img_tk = ImageTk.PhotoImage(img_pil)
                 self.feed_label.config(image=img_tk)
@@ -324,34 +357,57 @@ class NorosGUI:
         self.root.after(50, self.update_camera_feed)
 
     def update_grid(self):
-        """
-        Continuously updates the grid status:
-        - Robot cell => start_cell
-        - Other markers => obstacles
-        - If both start & goal are known => compute path
-        """
-        # 1) Update start_cell from the robot's cell label
         label = self.detector.get_robot_cell_label()
         if label is not None:
             self.start_cell = self.converter(label)
         else:
             self.start_cell = None
 
-        # 2) Update obstacles from other markers
         self.obstacles.clear()
         for (marker_id, cell_label, angle_deg) in self.detector.get_other_markers_cells():
             if cell_label is not None:
                 obs = self.converter(cell_label)
-                self.obstacles.append(obs)
+                if obs and obs != self.start_cell and obs != self.goal_cell:
+                    self.obstacles.append(obs)
 
-        # 3) If we have both start & goal, compute path
-        if self.start_cell is not None and self.goal_cell is not None:
+        if self.start_cell is not None and self.goal_cell is not None and not self.is_path_found:
             self.compute_path()
 
-        # 4) Redraw grid
-        self.draw_grid()
+        self.is_in_destination_cell = (self.start_cell == self.goal_cell)
 
+        if len(self.path) != 0:
+            for i in range(len(self.path)):
+                row, col, _ = self.path[i]
+                if (row, col) == self.converter(self.detector.get_robot_cell_label()) and (i+1) != len(self.path):
+                    rown, coln, _ = self.path[i+1]
+                    self.next_cell = (rown, coln)
+                    break
+
+        self.draw_grid()
         self.root.after(50, self.update_grid)
+
+    def update_led_status(self):
+        current_robot_status = self.detector.get_robot_cell_label() is not None
+        current_path_executing = self.is_path_executing
+        current_in_destination = self.is_in_destination_cell
+
+        status_messages = []
+        if current_robot_status != self.old_robot_detection_stat and not current_path_executing:
+            status_messages.append("STATUS,Robot Detected" if current_robot_status else "STATUS,Robot Not Detected")
+            self.old_robot_detection_stat = current_robot_status
+
+        if current_path_executing != getattr(self, "old_path_executing_status", None):
+            status_messages.append("STATUS,Path Executing" if current_path_executing else "STATUS,No Path Execution")
+            self.old_path_executing_status = current_path_executing
+
+        if current_in_destination != getattr(self, "old_in_destination_status", None):
+            status_messages.append("STATUS,In Destination Cell" if current_in_destination else "STATUS,Not in Destination Cell")
+            self.old_in_destination_status = current_in_destination
+
+        for message in status_messages:
+            threading.Thread(target=self.mover.send_status_message, args=(message,), daemon=True).start()
+
+        self.root.after(50, self.update_led_status)
 
     # ----------------------------------------------------------------
     #            SLIDER/TEXT ENTRY HANDLERS (DETECTION SETTINGS)
@@ -381,46 +437,92 @@ class NorosGUI:
         self.detector.set_show_lines(self.gridlines_var.get())
 
     # ----------------------------------------------------------------
+    #                  PRINT REDIRECT HANDLER
+    # ----------------------------------------------------------------
+    def update_status(self, message):
+        self.movement_queue.put(message)
+        self.root.after(100, self.process_queue)
+
+    def process_queue(self):
+        try:
+            while not self.movement_queue.empty():
+                message = self.movement_queue.get_nowait()
+                self.status_label.config(text=f"Status: {message}")
+        except queue.Empty:
+            pass
+
+    # ----------------------------------------------------------------
     #                  BUTTON COMMANDS
     # ----------------------------------------------------------------
     def on_start(self):
-        """
-        Pressing "Start" moves the robot along the computed path.
-        """
         if not self.start_cell or not self.goal_cell:
             print("Please select Goal cell and ensure Robot is detected.")
+            self.update_status("Please select Goal cell and ensure Robot is detected.")
             return
 
         if not self.path:
             print("No path found. Cannot move.")
+            self.update_status("No path found. Cannot move.")
             return
 
-        # Connect if not connected
-        # self.mover.connect()
+        if self.movement_thread and self.movement_thread.is_alive():
+            print("Movement is already in progress.")
+            self.update_status("Movement is already in progress.")
+            return
 
-        print("Starting movement along path:", self.path)
-        self.mover.execute_path(self.path)
-        print("Movement complete (all commands sent).")
+        self.is_path_executing = True
+        self.movement_thread = threading.Thread(target=self.run_movement, daemon=True)
+        self.movement_thread.start()
+
+    def run_movement(self):
+        try:
+            self.update_status("Movement in progress...")
+            print("Starting movement along path:", self.path)
+            self.mover.execute_path(self.path)
+            print("Movement complete (all commands sent).")
+            self.update_status("Movement complete.")
+        except Exception as e:
+            print(f"Error during movement: {e}")
+            self.update_status(f"Error during movement: {e}")
+        self.is_path_executing = False
 
     def on_reset(self):
-        """
-        Reset the path, start, goal, obstacles, etc.
-        """
+        if self.movement_thread and self.movement_thread.is_alive():
+            print("Cannot reset while movement is in progress.")
+            self.update_status("Cannot reset while movement is in progress.")
+            return
+
         self.is_path_found = False
         self.start_cell = None
         self.goal_cell = None
         self.path = []
         self.obstacles.clear()
         self.draw_grid()
+        self.next_cell = None
+        self.update_status("Reset complete.")
         print("Reset complete.")
 
     def on_exit(self):
-        """
-        Clean up and exit.
-        """
+        if self.movement_thread and self.movement_thread.is_alive():
+            print("Waiting for movement to finish before exiting...")
+            self.update_status("Waiting for movement to finish before exiting...")
+            self.movement_thread.join()
+
         self.detector.release()
         self.mover.disconnect()
         self.root.destroy()
+
+    def update_status(self, message):
+        self.movement_queue.put(message)
+        self.root.after(100, self.process_queue)
+
+    def process_queue(self):
+        try:
+            while not self.movement_queue.empty():
+                message = self.movement_queue.get_nowait()
+                self.status_label.config(text=f"Status: {message}")
+        except queue.Empty:
+            pass
 
 def main():
     root = tk.Tk()

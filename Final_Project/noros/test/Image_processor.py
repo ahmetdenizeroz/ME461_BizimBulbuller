@@ -81,6 +81,37 @@ def find_cell_centers(grid):
             label_count += 1
     return centers, labels
 
+def find_cell_centers_dict(grid):
+    """
+    Computes the center coordinates of each cell in a grid and maps them to (row, col) indices.
+
+    Args:
+        grid (list of lists): A 2D list where each element is a (x, y) tuple representing a grid point.
+
+    Returns:
+        dict: A dictionary mapping (row, col) tuples to (cx, cy) cell center coordinates.
+    """
+    cell_centers = {}
+    
+    for row_idx in range(len(grid) - 1):  # Iterate over rows
+        num_cols_curr = len(grid[row_idx])
+        num_cols_next = len(grid[row_idx + 1])
+        max_cols = min(num_cols_curr, num_cols_next) - 1  # Ensure safe column indexing
+
+        for col_idx in range(max_cols):  # Iterate over columns safely
+            # Get the four corner points of the current cell
+            x1, y1 = grid[row_idx][col_idx]
+            x2, y2 = grid[row_idx + 1][col_idx + 1]
+
+            # Compute the center of the cell
+            cx = (x1 + x2) // 2
+            cy = (y1 + y2) // 2
+
+            # Store in dictionary using (row, col) as key
+            cell_centers[(row_idx, col_idx)] = (cx, cy)
+    return cell_centers
+
+
 def average_grid_distance(gridA, gridB):
     if len(gridA) != len(gridB):
         return 999999
@@ -160,7 +191,7 @@ class ArucoGridDetector:
 
         # Internal state
         self.cap = cv2.VideoCapture(camera_index)
-        #self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+        #self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 200)
         #self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
         self.last_valid_grid = None
         self.last_valid_homography = None
@@ -405,7 +436,7 @@ class ArucoGridDetector:
     # ======= Draw Grid Overlays =======
     def draw_grid(self, display_frame, used_homography):
         cell_centers, labels = find_cell_centers(self.last_valid_grid)
-        self.cell_centers = find_cell_centers(self.last_valid_grid)
+        self.cell_centers = find_cell_centers_dict(self.last_valid_grid) ###################
         for (cx, cy), lbl in zip(cell_centers, labels):
             if used_homography and self.last_valid_homography is not None:
                 cx, cy = warp_point((cx, cy), self.last_valid_homography)

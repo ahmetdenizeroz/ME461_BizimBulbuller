@@ -11,7 +11,7 @@ class MovementClass:
         self.client_socket = None
         self.detector = detector  
 
-        self.position_threshold = 0.5  
+        self.position_threshold = 10 
         self.orientation_threshold = 5  # Degrees
         self.cells_per_command = 1  
 
@@ -71,13 +71,43 @@ class MovementClass:
                 self.expected_angle = (self.expected_angle + value) % 360
                 print(f"[MovementClass] Updated expected angle to {self.expected_angle} degrees after TURN command.")
 
-            success = self._send_command_wait_ack(cmd_type, value)
-            if not success:
-                print(f"[MovementClass] Command failed: {cmd_type} {value}")
-                break
+                success = self._send_command_wait_ack(cmd_type, value)
+                if not success:
+                    print(f"[MovementClass] Command failed: {cmd_type} {value}")
+                    break
 
-            # After each command, perform continuous angle corrections
-            self._continuous_angle_correction()
+                # After each command, perform continuous angle corrections
+                self._continuous_angle_correction()
+
+            elif cmd_type.upper() == "FORWARD":
+                for _ in range(value):
+                    self.current_step_index += 1
+
+                    if self.current_step_index < len(path):
+                        expected_cell = path[self.current_step_index]
+                        expected_position = self.detector.cell_centers.get(
+                            (expected_cell[0], expected_cell[1]), (None, None)
+                        )
+                        if expected_position == (None, None):
+                            print(f"[MovementClass] Expected cell center not found for cell {expected_cell}")
+                            continue
+                        expected_x, expected_y = expected_position
+                    else:
+                        print("[MovementClass] Reached end of path.")
+                        expected_x, expected_y = None, None
+
+                    # Send main FORWARD command for a single cell movement
+                    success = self._send_command_wait_ack("FORWARD", 1)
+                    if not success:
+                        print("[MovementClass] Failed to send FORWARD,1 command.")
+                        break
+
+                    # Perform continuous angle corrections
+                    self._continuous_angle_correction()
+
+                    # Perform continuous position corrections using the new "CORRECTION" message
+                    if expected_x is not None and expected_y is not None:
+                        self._continuous_position_correction(expected_x, expected_y)
 
     def _send_command_wait_ack(self, command, param):
         valid_commands = ["FORWARD", "BACK", "TURN", "STOP", "DANCE", "CORRECTION"]
@@ -86,7 +116,8 @@ class MovementClass:
             return False
 
         message = f"{command.upper()},{param}\n"
-        with self.socket_lock:
+
+        with self.socket_lock: 
             try:
                 self.client_socket.sendall(message.encode())
                 print(f"[MovementClass] Sent: {message.strip()}")
@@ -175,8 +206,7 @@ class MovementClass:
         """
         # conversion_factor converts a distance (in detector units) to encoder steps.
         # We assume detector.cell_size is the cell’s size (in the same units as expected_x/current_x).
-        conversion_factor = self.steps_per_cell / self.detector.cell_size
-
+        conversion_factor = 51 / 135
         while True:
             if not self.detector:
                 print("[MovementClass] No detector available for position correction.")
@@ -194,9 +224,9 @@ class MovementClass:
                 # For angle 0, we correct based on x+SHIFT: if current_x is less than expected_x, move forward.
                 diff = expected_x - current_x
                 if diff > self.position_threshold:
-                    direction = "FORWARD"
-                elif diff < -self.position_threshold:
                     direction = "BACK"
+                elif diff < -self.position_threshold:
+                    direction = "FORWARD"
                 else:
                     print("[MovementClass] X position within threshold.")
                     break
@@ -205,9 +235,9 @@ class MovementClass:
                 # For angle 180, correct with respect to x-SHIFT.
                 diff = current_x - expected_x
                 if diff > self.position_threshold:
-                    direction = "BACK"
-                elif diff < -self.position_threshold:
                     direction = "FORWARD"
+                elif diff < -self.position_threshold:
+                    direction = "BACK"
                 else:
                     print("[MovementClass] X position within threshold.")
                     break
@@ -216,9 +246,9 @@ class MovementClass:
                 # For angle 90, correct with respect to y-SHIFT.
                 diff = expected_y - current_y
                 if diff > self.position_threshold:
-                    direction = "BACK"
+                    direction = "Forward"
                 elif diff < -self.position_threshold:
-                    direction = "FORWARD"
+                    direction = "BACK"
                 else:
                     print("[MovementClass] Y position within threshold.")
                     break
@@ -239,7 +269,7 @@ class MovementClass:
                 break
 
             # Compute the number of encoder steps to move based on the distance error
-            correction_steps = max(1, int(round(abs(diff) * conversion_factor)))
+            correction_steps = max(5, int(round(abs(diff) * conversion_factor)))
             # Send a new message type "CORRECTION" along with direction and number of steps.
             correction_param = f"{direction},{correction_steps}"
             print(f"[MovementClass] Applying position correction: CORRECTION,{correction_param} (diff = {diff})")

@@ -1,13 +1,15 @@
-cmport tkinter as tk
+import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
 import cv2
 import math
+import threading
+import queue
 
 # Import your library classes (modular design)
 from Image_processor import ArucoGridDetector  # Robot Position Tracking
 from search_class import SearchClass          # Pathfinding (A* Search)
-from movement_class3 import MovementClass      # Movement Control
+from movement_class4 import MovementClass      # Movement Control
 
 class NorosGUI:
     def __init__(self, root):
@@ -32,7 +34,7 @@ class NorosGUI:
 
         # 2) Initialize search and movement classes
         self.searcher = SearchClass()
-        self.mover = MovementClass(pico_ip="192.168.187.16", pico_port=12346,detector = self.detector)
+        self.mover = MovementClass(pico_ip="192.168.232.16", pico_port=12346, detector=self.detector)
         self.mover.connect()  # Connect manually if needed
 
         # We set default grid dimensions in the search:
@@ -70,6 +72,7 @@ class NorosGUI:
         self.is_path_found = False
         self.start_cell = None
         self.goal_cell = None
+        self.next_cell = None
         self.path = []
 
         # Draw the initial grid
@@ -80,6 +83,14 @@ class NorosGUI:
 
         # Create the control panel
         self.create_control_panel()
+
+        # Status Label
+        self.status_label = ttk.Label(self.control_frame, text="Status: Idle", font=("Arial", 12, "bold"))
+        self.status_label.pack(pady=10, fill=tk.X)
+
+        # Movement Thread Control
+        self.movement_thread = None
+        self.movement_queue = queue.Queue()
 
         # Periodic camera and grid updates
         self.update_camera_feed()
@@ -133,10 +144,9 @@ class NorosGUI:
                     color = "red"
                 elif (row, col) in self.obstacles:
                     color = "grey"
-                elif (row, col, 0) in self.path or \
-                     (row, col, 90) in self.path or \
-                     (row, col, 180) in self.path or \
-                     (row, col, 270) in self.path:
+                elif (row, col) == self.next_cell:
+                    color = "orange"
+                elif any((row, col) == (step[0], step[1]) for step in self.path):
                     color = "#ADD8E6"  # light blue
                 else:
                     color = "white"
@@ -147,8 +157,8 @@ class NorosGUI:
                 if self.detector.get_robot_cell_label() is not None:
                     # Convert label -> (r, c)
                     label = self.detector.get_robot_cell_label()
-                    robot_r, robot_c = self.converter(label)
-                    if (row, col) == (robot_r, robot_c):
+                    robot_coords = self.converter(label)
+                    if robot_coords and (row, col) == robot_coords:
                         # Draw the orientation triangle
                         # center of cell
                         cx = (x1 + x2) / 2
@@ -157,7 +167,13 @@ class NorosGUI:
                         robot_pos = self.detector.get_robot_position()
                         if robot_pos is not None:
                             angle_deg = robot_pos[2]
-                        self.draw_equilateral_triangle(self.grid_canvas, cx, cy, self.detector.triangle_side/5, angle_deg)
+                        self.draw_equilateral_triangle(
+                            self.grid_canvas,
+                            cx,
+                            cy,
+                            self.detector.triangle_side / 5,
+                            angle_deg
+                        )
 
                 # Number the cell in the center
                 cx = x1 + self.cell_size // 2
@@ -342,12 +358,20 @@ class NorosGUI:
         for (marker_id, cell_label, angle_deg) in self.detector.get_other_markers_cells():
             if cell_label is not None:
                 obs = self.converter(cell_label)
-                self.obstacles.append(obs)
+                if obs and obs != self.start_cell and obs != self.goal_cell:
+                    self.obstacles.append(obs)
 
         # 3) If we have both start & goal, compute path
-        if self.start_cell is not None and self.goal_cell is not None:
+        if self.start_cell is not None and self.goal_cell is not None and not self.is_path_found:
             self.compute_path()
 
+        if len(self.path) != 0:
+            for i in range(len(self.path)):
+                row, col, _ = self.path[i]
+                if (row,col) == self.converter(self.detector.get_robot_cell_label()) and (i+1) != len(self.path):
+                    rown, coln, _ = self.path[i+1]
+                    self.next_cell = (rown, coln)
+                    break
         # 4) Redraw grid
         self.draw_grid()
 
@@ -389,39 +413,91 @@ class NorosGUI:
         """
         if not self.start_cell or not self.goal_cell:
             print("Please select Goal cell and ensure Robot is detected.")
+            self.update_status("Please select Goal cell and ensure Robot is detected.")
             return
 
         if not self.path:
             print("No path found. Cannot move.")
+            self.update_status("No path found. Cannot move.")
             return
 
-        # Connect if not connected
-        # self.mover.connect()
+        if self.movement_thread and self.movement_thread.is_alive():
+            print("Movement is already in progress.")
+            self.update_status("Movement is already in progress.")
+            return
 
-        print("Starting movement along path:", self.path)
-        self.mover.execute_path(self.path)
-        print("Movement complete (all commands sent).")
+        # Start movement in a separate thread
+        self.movement_thread = threading.Thread(target=self.run_movement, daemon=True)
+        self.movement_thread.start()
+
+    def run_movement(self):
+        """
+        Runs the movement execution and updates the GUI status accordingly.
+        """
+        try:
+            self.update_status("Movement in progress...")
+            print("Starting movement along path:", self.path)
+            self.mover.execute_path(self.path)
+            print("Movement complete (all commands sent).")
+            self.update_status("Movement complete.")
+        except Exception as e:
+            print(f"Error during movement: {e}")
+            self.update_status(f"Error during movement: {e}")
 
     def on_reset(self):
         """
         Reset the path, start, goal, obstacles, etc.
         """
+        if self.movement_thread and self.movement_thread.is_alive():
+            print("Cannot reset while movement is in progress.")
+            self.update_status("Cannot reset while movement is in progress.")
+            return
+
         self.is_path_found = False
         self.start_cell = None
         self.goal_cell = None
         self.path = []
         self.obstacles.clear()
         self.draw_grid()
+        self.next_cell = None
+        self.update_status("Reset complete.")
         print("Reset complete.")
 
     def on_exit(self):
         """
         Clean up and exit.
         """
+        if self.movement_thread and self.movement_thread.is_alive():
+            print("Waiting for movement to finish before exiting...")
+            self.update_status("Waiting for movement to finish before exiting...")
+            self.movement_thread.join()
+
         self.detector.release()
         self.mover.disconnect()
         self.root.destroy()
 
+    def update_status(self, message):
+        """
+        Thread-safe method to update the status label.
+        """
+        # Use thread-safe queue to update GUI elements
+        self.movement_queue.put(message)
+        self.root.after(100, self.process_queue)
+
+    def process_queue(self):
+        """
+        Process the movement queue and update the GUI accordingly.
+        """
+        try:
+            while not self.movement_queue.empty():
+                message = self.movement_queue.get_nowait()
+                self.status_label.config(text=f"Status: {message}")
+        except queue.Empty:
+            pass
+
+    # ----------------------------------------------------------------
+    #                      MAIN APPLICATION LOOP
+    # ----------------------------------------------------------------
 def main():
     root = tk.Tk()
     app = NorosGUI(root)
